@@ -1,22 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useApp } from "@/lib/store";
 import type { LeadStatus } from "@/lib/types";
-import { FLAGS, STATUS_CLASS, STATUS_LABELS, scoreColor } from "@/lib/utils";
+import { STATUS_LABELS } from "@/lib/utils";
 import LeadDetailPanel from "@/components/LeadDetailPanel";
 import AddLeadModal from "@/components/AddLeadModal";
 import LinkedInImport from "@/components/LinkedInImport";
+import LeadsGrid from "@/components/LeadsGrid";
 
 type Filter = LeadStatus | "alle";
 
 export default function LeadsPage() {
-  const { leads, showToast } = useApp();
+  const { leads, showToast, storageMode, updateLead, addQuickRow, recalculateScores } =
+    useApp();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<Filter>("alle");
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showLinkedInImport, setShowLinkedInImport] = useState(false);
+  const [runningAutomation, setRunningAutomation] = useState(false);
 
   const filtered = useMemo(() => {
     return leads.filter((p) => {
@@ -66,6 +70,37 @@ export default function LeadsPage() {
     showToast("Bericht gekopieerd!");
   }
 
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(
+    (ids: string[]) => {
+      setSelectedIds((prev) => {
+        const allOnPage = ids.every((id) => prev.has(id));
+        const next = new Set(prev);
+        if (allOnPage) ids.forEach((id) => next.delete(id));
+        else ids.forEach((id) => next.add(id));
+        return next;
+      });
+    },
+    []
+  );
+
+  async function runScoreAutomation() {
+    const ids =
+      selectedIds.size > 0 ? [...selectedIds] : filtered.map((l) => l.id);
+    setRunningAutomation(true);
+    const err = await recalculateScores(ids);
+    if (err) showToast(err);
+    setRunningAutomation(false);
+  }
+
   const funnelStages = [
     { label: "Nieuw", n: stats.nieuw, cls: "s1" },
     { label: "Bekeken", n: stats.bekeken, cls: "s2" },
@@ -75,11 +110,19 @@ export default function LeadsPage() {
     { label: "Verloren", n: stats.verloren, cls: "s5" },
   ];
 
+  const storageLabel =
+    storageMode === "cloud"
+      ? "☁️ Cloud actief"
+      : storageMode === "local"
+        ? "💾 Lokaal (browser)"
+        : "Laden…";
+
   return (
     <>
       <div className="topbar">
         <span className="topbar-title">Lead Intelligence</span>
         <span className="topbar-sub">— Legacy Scale Models</span>
+        <span className={`storage-badge storage-${storageMode}`}>{storageLabel}</span>
         <div className="topbar-spacer" />
         <div className="search-box">
           <span className="search-icon">⌕</span>
@@ -90,6 +133,14 @@ export default function LeadsPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <button
+          className="btn-secondary"
+          type="button"
+          disabled={runningAutomation || storageMode === "loading"}
+          onClick={runScoreAutomation}
+        >
+          {runningAutomation ? "Bezig…" : "▶ Herbereken score"}
+        </button>
         <button
           className="btn-secondary"
           type="button"
@@ -107,7 +158,7 @@ export default function LeadsPage() {
           <div className="stat-card">
             <div className="stat-label">Totaal leads</div>
             <div className="stat-value">{stats.total}</div>
-            <div className="stat-delta">10 per nacht toegevoegd</div>
+            <div className="stat-delta">Klik in cellen om te bewerken</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Nieuw</div>
@@ -176,114 +227,24 @@ export default function LeadsPage() {
               </button>
             )
           )}
-          <div className="filter-sep" />
-          <button
-            type="button"
-            className="filter-pill"
-            onClick={() => setStatusFilter("nieuw")}
-          >
-            🌙 Nieuwe batch
-          </button>
         </div>
 
         <div className="table-area">
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Bedrijf</th>
-                  <th>Contact</th>
-                  <th>Fit score</th>
-                  <th>Status</th>
-                  <th>Batch</th>
-                  <th>Acties</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={6} style={{ textAlign: "center", padding: 32, color: "#bbb", fontSize: 13 }}>
-                      Geen leads gevonden
-                    </td>
-                  </tr>
-                )}
-                {filtered.map((p) => {
-                  const score = p.score ?? 0;
-                  const color = scoreColor(score);
-                  return (
-                    <tr
-                      key={p.id}
-                      className={selectedId === p.id ? "selected" : ""}
-                      onClick={() => setSelectedId(p.id)}
-                    >
-                      <td>
-                        <div className="company-cell">
-                          <div className="company-flag">{FLAGS[p.country] ?? "🌍"}</div>
-                          <div>
-                            <div className="company-name">{p.company}</div>
-                            <div className="company-meta">
-                              {p.country} · {p.employees.toLocaleString("nl-NL")} mw · {p.revenue}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="contact-name">{p.contactName}</div>
-                        <div className="contact-title">{p.contactTitle}</div>
-                      </td>
-                      <td>
-                        <div className="score-wrap">
-                          <div className="score-bar-bg">
-                            <div
-                              className="score-bar"
-                              style={{ width: `${score}%`, background: color }}
-                            />
-                          </div>
-                          <span className="score-num" style={{ color }}>
-                            {score}%
-                          </span>
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`status-pill ${STATUS_CLASS[p.status]}`}>
-                          {STATUS_LABELS[p.status]}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`batch-badge${p.isNew ? " new-batch" : ""}`}>
-                          {p.isNew ? "Nieuw" : p.batch}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="actions-cell">
-                          <button
-                            type="button"
-                            className="action-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              copyMsg(p.id);
-                            }}
-                          >
-                            Kopieer
-                          </button>
-                          <a
-                            className="action-btn linkedin"
-                            href={p.linkedinUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            in
-                          </a>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <div style={{ fontSize: 11, color: "#bbb", marginTop: 8, padding: "0 2px" }}>
+          <div className="table-main">
+            <LeadsGrid
+              leads={filtered}
+              selectedId={selectedId}
+              selectedIds={selectedIds}
+              onSelectRow={setSelectedId}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={toggleSelectAll}
+              onUpdate={updateLead}
+              onAddRow={addQuickRow}
+              onCopyMessage={copyMsg}
+            />
+            <div className="grid-footer">
               {filtered.length} van {leads.length} leads
+              {selectedIds.size > 0 && ` · ${selectedIds.size} geselecteerd`}
             </div>
           </div>
 

@@ -10,21 +10,31 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth, getDataKey } from "./auth";
+import {
+  fetchCloudData,
+  patchCloudLead,
+  postCloudLead,
+  recalculateCloudScores,
+  saveCloudSnapshot,
+} from "./data/leads-client";
+import { isCloudEnabled } from "./data/is-cloud";
 import { SEED_LEADS, BATCH_TEMPLATES } from "./seed-data";
 import type { Batch, CreditTransaction, Integrations, Lead, UserData } from "./types";
-import {
-  CREDIT_COSTS,
-  NIGHTLY_BATCH_LEADS,
-} from "./types";
+import { CREDIT_COSTS, NIGHTLY_BATCH_LEADS } from "./types";
 import { fitScore, generateId, todayBatchDate } from "./utils";
+
+export type StorageMode = "local" | "cloud" | "loading";
 
 interface AppContextValue {
   leads: Lead[];
   batches: Batch[];
   toast: string | null;
+  storageMode: StorageMode;
   showToast: (msg: string) => void;
   updateLead: (id: string, updates: Partial<Lead>) => void;
   addLead: (lead: Omit<Lead, "id" | "score" | "batch" | "isNew">) => string | null;
+  addQuickRow: () => string | null;
+  recalculateScores: (ids: string[]) => Promise<string | null>;
   runNightlyBatch: () => string | null;
   spendCredits: (amount: number, description: string) => boolean;
   addCredits: (amount: number, description: string) => void;
@@ -72,19 +82,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const [storageMode, setStorageMode] = useState<StorageMode>("loading");
+  const cloud = isCloudEnabled();
 
   useEffect(() => {
     if (!user) {
       setLeads([]);
       setBatches([]);
+      setStorageMode("loading");
       return;
     }
-    const data = loadUserData(user.id);
-    setLeads(data.leads);
-    setBatches(data.batches);
-  }, [user?.id]);
 
-  const persist = useCallback(
+    let cancelled = false;
+
+    async function load() {
+      setStorageMode("loading");
+      if (cloud) {
+        try {
+          const data = await fetchCloudData(user!.id);
+          if (!cancelled) {
+            setLeads(data.leads);
+            setBatches(data.batches);
+            setStorageMode("cloud");
+          }
+          return;
+        } catch {
+          /* fall through to local */
+        }
+      }
+
+      const data = loadUserData(user!.id);
+      if (!cancelled) {
+        setLeads(data.leads);
+        setBatches(data.batches);
+        setStorageMode("local");
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, cloud]);
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  const persistLocal = useCallback(
     (newLeads: Lead[], newBatches: Batch[]) => {
       if (!user) return;
       saveUserData(user.id, { leads: newLeads, batches: newBatches });
@@ -92,10 +138,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [user]
   );
 
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2500);
-  }, []);
+  const persistAll = useCallback(
+    async (newLeads: Lead[], newBatches: Batch[]) => {
+      if (!user) return;
+      if (storageMode === "cloud") {
+        try {
+          await saveCloudSnapshot(user.id, newLeads, newBatches);
+        } catch {
+          showToast("Cloud opslaan mislukt — lokaal terugval");
+          persistLocal(newLeads, newBatches);
+        }
+      } else {
+        persistLocal(newLeads, newBatches);
+      }
+    },
+    [user, storageMode, persistLocal, showToast]
+  );
 
   const addTransaction = useCallback(
     (tx: CreditTransaction) => {
@@ -146,11 +204,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const next = prev.map((l) =>
           l.id === id ? { ...l, ...updates, score: fitScore({ ...l, ...updates }) } : l
         );
-        persist(next, batches);
+        const updated = next.find((l) => l.id === id);
+        if (updated && user && storageMode === "cloud") {
+          patchCloudLead(user.id, id, updated).catch(() =>
+            showToast("Wijziging kon niet worden opgeslagen")
+          );
+        } else {
+          persistLocal(next, batches);
+        }
         return next;
       });
     },
-    [batches, persist]
+    [batches, persistLocal, showToast, storageMode, user]
   );
 
   const addLead = useCallback(
@@ -167,15 +232,93 @@ export function AppProvider({ children }: { children: ReactNode }) {
         isNew: true,
         score: fitScore(lead),
       };
-      setLeads((prev) => {
-        const next = [newLead, ...prev];
-        persist(next, batches);
-        return next;
-      });
+
+      if (storageMode === "cloud") {
+        postCloudLead(user.id, newLead)
+          .then((saved) => setLeads((prev) => [saved, ...prev]))
+          .catch(() => showToast("Lead kon niet in cloud worden opgeslagen"));
+      } else {
+        setLeads((prev) => {
+          const next = [newLead, ...prev];
+          persistLocal(next, batches);
+          return next;
+        });
+      }
+
       showToast("Lead toegevoegd!");
       return null;
     },
-    [user, batches, spendCredits, persist, showToast]
+    [user, batches, spendCredits, persistLocal, showToast, storageMode]
+  );
+
+  const addQuickRow = useCallback((): string | null => {
+    if (!user) return "Niet ingelogd.";
+    const batch = todayBatchDate();
+    const newLead: Lead = {
+      id: generateId(),
+      company: "Nieuw bedrijf",
+      country: "Nederland",
+      employees: 100,
+      revenue: "",
+      sector: "Agri Dealer",
+      contactName: "",
+      contactTitle: "",
+      linkedinUrl: "",
+      status: "nieuw",
+      batch,
+      isNew: true,
+      notes: "",
+      message: "",
+      score: fitScore({ country: "Nederland", employees: 100, sector: "Agri Dealer" }),
+    };
+
+    if (storageMode === "cloud") {
+      postCloudLead(user.id, newLead)
+        .then((saved) => setLeads((prev) => [saved, ...prev]))
+        .catch(() => showToast("Rij kon niet in cloud worden opgeslagen"));
+    } else {
+      setLeads((prev) => {
+        const next = [newLead, ...prev];
+        persistLocal(next, batches);
+        return next;
+      });
+    }
+
+    showToast("Nieuwe rij toegevoegd");
+    return null;
+  }, [user, batches, persistLocal, showToast, storageMode]);
+
+  const recalculateScores = useCallback(
+    async (ids: string[]): Promise<string | null> => {
+      if (!user) return "Niet ingelogd.";
+      if (!ids.length) return "Selecteer minimaal één rij.";
+
+      if (storageMode === "cloud") {
+        try {
+          const updated = await recalculateCloudScores(user.id, ids);
+          setLeads((prev) => {
+            const map = new Map(updated.map((l) => [l.id, l]));
+            return prev.map((l) => map.get(l.id) ?? l);
+          });
+          showToast(`Score herberekend voor ${updated.length} leads`);
+          return null;
+        } catch {
+          return "Automatisering mislukt.";
+        }
+      }
+
+      setLeads((prev) => {
+        const idSet = new Set(ids);
+        const next = prev.map((l) =>
+          idSet.has(l.id) ? { ...l, score: fitScore(l) } : l
+        );
+        persistLocal(next, batches);
+        showToast(`Score herberekend voor ${ids.length} leads`);
+        return next;
+      });
+      return null;
+    },
+    [user, batches, persistLocal, showToast, storageMode]
   );
 
   const runNightlyBatch = useCallback((): string | null => {
@@ -216,13 +359,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const next = [...newLeads, ...cleared];
       const nextBatches = [batch, ...batches];
       setBatches(nextBatches);
-      persist(next, nextBatches);
+      persistAll(next, nextBatches);
       return next;
     });
 
     showToast(`${newLeads.length} nieuwe leads gegenereerd!`);
     return null;
-  }, [user, leads, batches, spendCredits, persist, showToast]);
+  }, [user, leads, batches, spendCredits, persistAll, showToast]);
 
   const updateIntegrations = useCallback(
     (integrations: Integrations) => {
@@ -237,9 +380,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       leads,
       batches,
       toast,
+      storageMode,
       showToast,
       updateLead,
       addLead,
+      addQuickRow,
+      recalculateScores,
       runNightlyBatch,
       spendCredits,
       addCredits,
@@ -249,9 +395,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       leads,
       batches,
       toast,
+      storageMode,
       showToast,
       updateLead,
       addLead,
+      addQuickRow,
+      recalculateScores,
       runNightlyBatch,
       spendCredits,
       addCredits,
