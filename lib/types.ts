@@ -6,6 +6,8 @@ export type LeadStatus =
   | "gewonnen"
   | "verloren";
 
+export type AiStatus = "idle" | "running" | "done" | "error";
+
 export interface Lead {
   id: string;
   company: string;
@@ -22,6 +24,10 @@ export interface Lead {
   notes: string;
   message: string;
   score?: number;
+  aiMessage?: string;
+  aiSummary?: string;
+  aiNextStep?: string;
+  aiStatus?: AiStatus;
 }
 
 export interface Batch {

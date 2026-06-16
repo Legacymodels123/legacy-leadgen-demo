@@ -1,7 +1,25 @@
 "use client";
 
 import type { Lead, LeadStatus } from "@/lib/types";
+import type { AiStatus } from "@/lib/types";
 import { FLAGS, STATUS_LABELS, scoreColor } from "@/lib/utils";
+
+function AiCellContent({ status, value }: { status?: AiStatus; value?: string }) {
+  if (status === "running") {
+    return (
+      <span className="ai-status ai-running" title="AI bezig…">
+        <span className="ai-spinner" /> Bezig…
+      </span>
+    );
+  }
+  if (status === "error") {
+    return <span className="ai-status ai-error">Fout</span>;
+  }
+  if (value) {
+    return <span className="ai-text" title={value}>{value}</span>;
+  }
+  return <span className="ai-empty">—</span>;
+}
 
 const STATUSES: LeadStatus[] = [
   "nieuw",
@@ -56,13 +74,16 @@ export default function LeadsGrid({
             <th>Sector</th>
             <th>Fit score</th>
             <th>Status</th>
+            <th className="ai-col">AI Bericht</th>
+            <th className="ai-col">AI Samenvatting</th>
+            <th className="ai-col">Volgende stap</th>
             <th>Acties</th>
           </tr>
         </thead>
         <tbody>
           {leads.length === 0 && (
             <tr>
-              <td colSpan={8} className="grid-empty">
+              <td colSpan={11} className="grid-empty">
                 Geen leads gevonden — voeg een rij toe
               </td>
             </tr>
@@ -150,6 +171,15 @@ export default function LeadsGrid({
                       </option>
                     ))}
                   </select>
+                </td>
+                <td className="ai-cell" onClick={() => onSelectRow(lead.id)}>
+                  <AiCellContent status={lead.aiStatus} value={lead.aiMessage} />
+                </td>
+                <td className="ai-cell" onClick={() => onSelectRow(lead.id)}>
+                  <AiCellContent status={lead.aiStatus} value={lead.aiSummary} />
+                </td>
+                <td className="ai-cell" onClick={() => onSelectRow(lead.id)}>
+                  <AiCellContent status={lead.aiStatus} value={lead.aiNextStep} />
                 </td>
                 <td onClick={(e) => e.stopPropagation()}>
                   <div className="actions-cell">

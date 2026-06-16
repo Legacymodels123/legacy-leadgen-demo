@@ -15,11 +15,13 @@ import {
   patchCloudLead,
   postCloudLead,
   recalculateCloudScores,
+  runAiColumnsCloud,
   saveCloudSnapshot,
 } from "./data/leads-client";
 import { isCloudEnabled } from "./data/is-cloud";
 import { SEED_LEADS, BATCH_TEMPLATES } from "./seed-data";
 import type { Batch, CreditTransaction, Integrations, Lead, UserData } from "./types";
+import { DEFAULT_AI_COLUMNS, type AiColumnKey } from "./types/automation";
 import { CREDIT_COSTS, NIGHTLY_BATCH_LEADS } from "./types";
 import { fitScore, generateId, todayBatchDate } from "./utils";
 
@@ -35,6 +37,7 @@ interface AppContextValue {
   addLead: (lead: Omit<Lead, "id" | "score" | "batch" | "isNew">) => string | null;
   addQuickRow: () => string | null;
   recalculateScores: (ids: string[]) => Promise<string | null>;
+  runAiColumns: (ids: string[], columns?: AiColumnKey[]) => Promise<string | null>;
   runNightlyBatch: () => string | null;
   spendCredits: (amount: number, description: string) => boolean;
   addCredits: (amount: number, description: string) => void;
@@ -321,6 +324,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [user, batches, persistLocal, showToast, storageMode]
   );
 
+  const runAiColumns = useCallback(
+    async (ids: string[], columns: AiColumnKey[] = DEFAULT_AI_COLUMNS): Promise<string | null> => {
+      if (!user) return "Niet ingelogd.";
+      if (!ids.length) return "Selecteer minimaal één rij.";
+
+      const idSet = new Set(ids);
+      setLeads((prev) =>
+        prev.map((l) => (idSet.has(l.id) ? { ...l, aiStatus: "running" as const } : l))
+      );
+
+      try {
+        const snapshot = leads.filter((l) => idSet.has(l.id));
+        const updated =
+          storageMode === "cloud"
+            ? await runAiColumnsCloud(user.id, ids, columns)
+            : await runAiColumnsCloud(user.id, ids, columns, snapshot);
+
+        setLeads((prev) => {
+          const map = new Map(updated.map((l) => [l.id, { ...l, aiStatus: "done" as const }]));
+          const next = prev.map((l) => map.get(l.id) ?? l);
+          if (storageMode !== "cloud") {
+            persistLocal(next, batches);
+          }
+          return next;
+        });
+
+        showToast(`AI kolommen ingevuld voor ${updated.length} leads`);
+        return null;
+      } catch (e) {
+        setLeads((prev) =>
+          prev.map((l) =>
+            idSet.has(l.id) ? { ...l, aiStatus: "error" as const } : l
+          )
+        );
+        return e instanceof Error ? e.message : "AI kolommen mislukt.";
+      }
+    },
+    [user, leads, batches, persistLocal, showToast, storageMode]
+  );
+
   const runNightlyBatch = useCallback((): string | null => {
     if (!user) return "Niet ingelogd.";
     const cost = CREDIT_COSTS.nightlyBatch * NIGHTLY_BATCH_LEADS;
@@ -386,6 +429,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addLead,
       addQuickRow,
       recalculateScores,
+      runAiColumns,
       runNightlyBatch,
       spendCredits,
       addCredits,
@@ -401,6 +445,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addLead,
       addQuickRow,
       recalculateScores,
+      runAiColumns,
       runNightlyBatch,
       spendCredits,
       addCredits,

@@ -17,6 +17,9 @@ export interface LeadRow {
   notes: string;
   message: string;
   score: number | null;
+  ai_message: string | null;
+  ai_summary: string | null;
+  ai_next_step: string | null;
 }
 
 export interface BatchRow {
@@ -47,6 +50,9 @@ export function leadToRow(lead: Lead, userId: string): LeadRow {
     notes: lead.notes,
     message: lead.message,
     score: lead.score ?? null,
+    ai_message: lead.aiMessage ?? null,
+    ai_summary: lead.aiSummary ?? null,
+    ai_next_step: lead.aiNextStep ?? null,
   };
 }
 
@@ -67,6 +73,9 @@ export function rowToLead(row: LeadRow): Lead {
     notes: row.notes,
     message: row.message,
     score: row.score ?? undefined,
+    aiMessage: row.ai_message ?? undefined,
+    aiSummary: row.ai_summary ?? undefined,
+    aiNextStep: row.ai_next_step ?? undefined,
   };
 }
 

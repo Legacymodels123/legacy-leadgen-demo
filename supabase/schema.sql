@@ -1,5 +1,10 @@
 -- Run in Supabase SQL Editor: https://supabase.com/dashboard/project/_/sql
 
+-- Migration for existing projects (run if table already exists):
+-- alter table public.leads add column if not exists ai_message text;
+-- alter table public.leads add column if not exists ai_summary text;
+-- alter table public.leads add column if not exists ai_next_step text;
+
 create table if not exists public.leads (
   id text primary key,
   user_id text not null,
@@ -17,6 +22,9 @@ create table if not exists public.leads (
   notes text not null default '',
   message text not null default '',
   score integer,
+  ai_message text,
+  ai_summary text,
+  ai_next_step text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

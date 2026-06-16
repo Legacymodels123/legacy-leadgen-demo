@@ -1,4 +1,5 @@
 import type { Batch, Lead } from "@/lib/types";
+import type { AiColumnKey } from "@/lib/types/automation";
 
 function headers(userId: string): HeadersInit {
   return {
@@ -47,6 +48,24 @@ export async function recalculateCloudScores(
     body: JSON.stringify({ ids }),
   });
   if (!res.ok) throw new Error("Automatisering mislukt");
+  return res.json();
+}
+
+export async function runAiColumnsCloud(
+  userId: string,
+  leadIds: string[],
+  columns?: AiColumnKey[],
+  leads?: Lead[]
+): Promise<Lead[]> {
+  const res = await fetch("/api/automations/run", {
+    method: "POST",
+    headers: headers(userId),
+    body: JSON.stringify({ leadIds, columns, leads }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error ?? "AI kolommen mislukt");
+  }
   return res.json();
 }
 
