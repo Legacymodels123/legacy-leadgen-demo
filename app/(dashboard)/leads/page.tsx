@@ -6,6 +6,7 @@ import type { LeadStatus } from "@/lib/types";
 import { FLAGS, STATUS_CLASS, STATUS_LABELS, scoreColor } from "@/lib/utils";
 import LeadDetailPanel from "@/components/LeadDetailPanel";
 import AddLeadModal from "@/components/AddLeadModal";
+import LinkedInImport from "@/components/LinkedInImport";
 
 type Filter = LeadStatus | "alle";
 
@@ -15,6 +16,7 @@ export default function LeadsPage() {
   const [statusFilter, setStatusFilter] = useState<Filter>("alle");
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showLinkedInImport, setShowLinkedInImport] = useState(false);
 
   const filtered = useMemo(() => {
     return leads.filter((p) => {
@@ -88,6 +90,13 @@ export default function LeadsPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <button
+          className="btn-secondary"
+          type="button"
+          onClick={() => setShowLinkedInImport(true)}
+        >
+          Importeer LinkedIn CSV
+        </button>
         <button className="btn-primary" type="button" onClick={() => setShowAddModal(true)}>
           + Voeg lead toe
         </button>
@@ -285,6 +294,9 @@ export default function LeadsPage() {
       </div>
 
       {showAddModal && <AddLeadModal onClose={() => setShowAddModal(false)} />}
+      {showLinkedInImport && (
+        <LinkedInImport onClose={() => setShowLinkedInImport(false)} />
+      )}
     </>
   );
 }
