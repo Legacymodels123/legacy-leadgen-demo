@@ -60,10 +60,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     leads = ((rows as LeadRow[]) ?? []).map(rowToLead);
-  } else if (body.leads?.length) {
+  }
+
+  if (!leads.length && body.leads?.length) {
     const idSet = new Set(leadIds);
     leads = body.leads.filter((l) => idSet.has(l.id));
-  } else {
+  } else if (!leads.length) {
     return NextResponse.json(
       { error: "Cloud storage not configured — stuur leads mee voor lokaal gebruik" },
       { status: 503 }
@@ -107,7 +109,10 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const hint = error.message.includes("ai_")
+          ? `${error.message} — Run de SQL migratie in supabase/schema.sql`
+          : error.message;
+        return NextResponse.json({ error: hint }, { status: 500 });
       }
       updated.push(rowToLead(data as LeadRow));
     } else {

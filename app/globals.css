@@ -675,6 +675,42 @@ td { padding: 11px 14px; vertical-align: middle; }
   flex: 1;
 }
 
+.batch-success-banner {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #047857;
+  margin-top: 12px;
+}
+.batch-link {
+  color: var(--red);
+  font-weight: 600;
+  text-decoration: none;
+}
+.batch-link:hover { text-decoration: underline; }
+.batch-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #666;
+}
+.ai-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ddd;
+  border-top-color: var(--red);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .ai-col { min-width: 140px; max-width: 200px; font-size: 11px; }
 .ai-cell {
   max-width: 200px;

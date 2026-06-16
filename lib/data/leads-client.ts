@@ -69,6 +69,58 @@ export async function runAiColumnsCloud(
   return res.json();
 }
 
+export interface BatchRunResult {
+  leads: Lead[];
+  batch: Batch;
+  allLeads?: Lead[];
+  source: "ai" | "templates";
+}
+
+export async function runBatchCloud(
+  userId: string,
+  existingCompanies: string[],
+  userName: string,
+  count?: number
+): Promise<BatchRunResult> {
+  const res = await fetch("/api/batches/run", {
+    method: "POST",
+    headers: headers(userId),
+    body: JSON.stringify({ existingCompanies, userName, count }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error ?? "Batch mislukt");
+  }
+  return res.json();
+}
+
+export async function enrichLeadsCloud(
+  userId: string,
+  leadIds: string[],
+  leads?: Lead[]
+): Promise<{ leads: Lead[]; aiPowered: boolean }> {
+  const res = await fetch("/api/leads/enrich", {
+    method: "POST",
+    headers: headers(userId),
+    body: JSON.stringify({ leadIds, leads }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error ?? "Verrijking mislukt");
+  }
+  return res.json();
+}
+
+export async function fetchServiceStatus(): Promise<{
+  cloud: boolean;
+  ai: boolean;
+  supabasePublic: boolean;
+}> {
+  const res = await fetch("/api/health/status");
+  if (!res.ok) return { cloud: false, ai: false, supabasePublic: false };
+  return res.json();
+}
+
 export async function saveCloudSnapshot(
   userId: string,
   leads: Lead[],

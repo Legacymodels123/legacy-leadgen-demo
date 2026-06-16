@@ -12,7 +12,7 @@ import LeadsGrid from "@/components/LeadsGrid";
 type Filter = LeadStatus | "alle";
 
 export default function LeadsPage() {
-  const { leads, showToast, storageMode, updateLead, addQuickRow, recalculateScores, runAiColumns } =
+  const { leads, showToast, storageMode, updateLead, addQuickRow, recalculateScores, runAiColumns, enrichLeads } =
     useApp();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -22,6 +22,7 @@ export default function LeadsPage() {
   const [showLinkedInImport, setShowLinkedInImport] = useState(false);
   const [runningAutomation, setRunningAutomation] = useState(false);
   const [runningAi, setRunningAi] = useState(false);
+  const [runningEnrich, setRunningEnrich] = useState(false);
 
   const filtered = useMemo(() => {
     return leads.filter((p) => {
@@ -111,6 +112,15 @@ export default function LeadsPage() {
     setRunningAi(false);
   }
 
+  async function runEnrichAutomation() {
+    const ids =
+      selectedIds.size > 0 ? [...selectedIds] : filtered.map((l) => l.id);
+    setRunningEnrich(true);
+    const err = await enrichLeads(ids);
+    if (err) showToast(err);
+    setRunningEnrich(false);
+  }
+
   const funnelStages = [
     { label: "Nieuw", n: stats.nieuw, cls: "s1" },
     { label: "Bekeken", n: stats.bekeken, cls: "s2" },
@@ -143,6 +153,14 @@ export default function LeadsPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <button
+          className="btn-secondary"
+          type="button"
+          disabled={runningEnrich || storageMode === "loading"}
+          onClick={runEnrichAutomation}
+        >
+          {runningEnrich ? "Verrijken…" : "▶ Verrijk geselecteerde"}
+        </button>
         <button
           className="btn-secondary"
           type="button"
@@ -279,3 +297,4 @@ export default function LeadsPage() {
     </>
   );
 }
+                                                                                                                                                                                                                                                                                                                                                                                       

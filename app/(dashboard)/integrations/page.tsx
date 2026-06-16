@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useApp } from "@/lib/store";
+import { fetchServiceStatus } from "@/lib/data/leads-client";
 import type { Integrations } from "@/lib/types";
 
 const INTEGRATIONS: {
@@ -33,7 +35,16 @@ const INTEGRATIONS: {
 
 export default function IntegrationsPage() {
   const { user } = useAuth();
-  const { updateIntegrations } = useApp();
+  const { updateIntegrations, storageMode } = useApp();
+  const [serviceStatus, setServiceStatus] = useState({
+    cloud: false,
+    ai: false,
+    supabasePublic: false,
+  });
+
+  useEffect(() => {
+    fetchServiceStatus().then(setServiceStatus).catch(() => {});
+  }, []);
 
   if (!user) return null;
 
@@ -52,53 +63,37 @@ export default function IntegrationsPage() {
       </div>
       <div className="page-scroll">
         <div className="card">
-          <div className="card-title">Actieve integraties</div>
+          <div className="card-title">Systeemstatus</div>
           <div className="card-desc">
-            Schakel integraties in of uit. Instellingen worden lokaal opgeslagen.
-          </div>
-          {INTEGRATIONS.map((item) => (
-            <div key={item.key} className="setting-row">
-              <div className="setting-info">
-                <h4>{item.title}</h4>
-                <p>{item.description}</p>
-              </div>
-              <button
-                type="button"
-                className={`toggle${user.integrations[item.key] ? " on" : ""}`}
-                onClick={() => toggle(item.key)}
-                aria-label={`Toggle ${item.title}`}
-              />
-            </div>
-          ))}
-        </div>
-
-        <div className="card">
-          <div className="card-title">API Status</div>
-          <div className="card-desc">Verbindingen met externe services</div>
-          <div className="setting-row">
-            <div className="setting-info">
-              <h4>Lead Intelligence API</h4>
-              <p>Intern — actief</p>
-            </div>
-            <span className="status-pill s-gewonnen">Online</span>
+            Server-side configuratie (geen geheimen getoond). Client opslag:{" "}
+            {storageMode === "cloud"
+              ? "☁️ Cloud"
+              : storageMode === "local"
+                ? "💾 Lokaal"
+                : "…"}
           </div>
           <div className="setting-row">
             <div className="setting-info">
-              <h4>AI Agent Service</h4>
-              <p>
-                {user.integrations.nightlyAgent
-                  ? "Gepland — volgende run 02:00"
-                  : "Uitgeschakeld"}
-              </p>
+              <h4>Supabase Cloud</h4>
+              <p>Database sync voor leads en batches</p>
             </div>
             <span
-              className={`status-pill ${user.integrations.nightlyAgent ? "s-gewonnen" : "s-verloren"}`}
+              className={`status-pill ${serviceStatus.cloud ? "s-gewonnen" : "s-verloren"}`}
             >
-              {user.integrations.nightlyAgent ? "Actief" : "Inactief"}
+              {serviceStatus.cloud ? "Geconfigureerd" : "Niet actief"}
             </span>
           </div>
-        </div>
-      </div>
-    </>
-  );
-}
+          <div className="setting-row">
+            <div className="setting-info">
+              <h4>Claude AI</h4>
+              <p>AI kolommen, batch research, lead verrijking</p>
+            </div>
+            <span className={`status-pill ${serviceStatus.ai ? "s-gewonnen" : "s-verloren"}`}>
+              {serviceStatus.ai ? "Geconfigureerd" : "Niet actief"}
+            </span>
+          </div>
+          {!serviceStatus.ai && (
+            <p className="card-desc" style={{ marginTop: 8, color: "#92400e" }}>
+              Voeg <code>ANTHROPIC_API_KEY</code> toe in Vercel en redeploy voor volledige AI
+              functionaliteit.
+            </p>
